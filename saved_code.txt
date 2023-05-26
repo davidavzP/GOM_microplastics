@@ -1,0 +1,63 @@
+### REFACTOR STOKES DATASET ###
+###############################################################################################################
+import xarray as xr
+import os
+
+data_dir = 'data/'
+stokes_files = sorted(glob(data_dir + '*_GOM_STOKES_raw_old.nc'))
+
+stokes = xr.open_mfdataset('data\\*_GOM_STOKES_raw_old.nc', combine='nested', join ='outer')
+stokes.sel(time = slice('2019-12-31T18:00:00.000000000', '2020-01-01T03:00:00.000000000'))
+
+def download_netcdf_file(ds, file_name):
+    try:
+        os.remove(file_name)
+        print("Done Deleting")
+    except OSError:
+        pass
+
+    ds.to_netcdf(path = file_name)
+    
+from datetime import datetime
+
+stokes_2019 = stokes.sel(time = '2019')
+stokes_2020 = stokes.sel(time = '2020')
+stokes_2021 = stokes.sel(time = '2021')
+
+download_netcdf_file(stokes_2019, '2019_GOM_STOKES_raw.nc')
+download_netcdf_file(stokes_2020, '2020_GOM_STOKES_raw.nc')
+download_netcdf_file(stokes_2021, '2021_GOM_STOKES_raw.nc')
+###############################################################################################################
+###############################################################################################################
+###  Calculate Fishing Mass Contribution ###
+# # EXAMPLE:
+# input_total = np.sum(coast_cell_df)
+
+# rp = 0.121
+# cp = 0.598
+# fp = 0.179 + 0.089 + 0.013
+
+# ft = (input_total.land_kg_mon + input_total.river_kg_mon  ) * (fp / (1 - fp))
+
+# print(f'land total: {input_total.land_kg_mon}, river total: {input_total.river_kg_mon}, fishing total {ft}, total total: {ft + input_total.river_kg_mon + input_total.land_kg_mon}')
+
+# pr_r = input_total.land_kg_mon/input_total.river_kg_mon
+# fr_r = ft / input_total.river_kg_mon
+# print()
+# print(f'land:river ~ {pr_r}, fishing:river ~ {fr_r}')
+
+# ratio_pr = 2.0
+# land_kg_mon_scaled = input_total.river_kg_mon *ratio_pr
+
+# print()
+# print('Example of mass scaling')
+print(f'land_kg_mon_scaled: {land_kg_mon_scaled}, mass of vp: { land_kg_mon_scaled / input_total.land_kg_mon}')
+
+### OUTPUT ###
+land total: 84078.203125, river total: 46136.007166666684, fishing total 50890.393730122865, total total: 181104.60402178956
+
+land:river ~ 1.8223987789248177, fishing:river ~ 1.103051539468531
+
+Example of mass scaling
+land_kg_mon_scaled: 92272.01433333337, mass of vp: 1.0974546422709766
+###############################################################################################################
