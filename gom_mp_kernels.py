@@ -29,7 +29,8 @@ def SmagDiff(particle, fieldset, time):
 
     particle.lat += dlat
     particle.lon += dlon
-    
+
+# https://nbviewer.org/github/OceanParcels/parcels/blob/master/parcels/examples/documentation_unstuck_Agrid.ipynb
 def SetDisplacement(particle, fieldset, time):
     particle.d2s = fieldset.distance2shore[time, particle.depth,
                                particle.lat, particle.lon]
