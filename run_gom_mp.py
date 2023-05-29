@@ -100,8 +100,10 @@ def set_smagdiff_fieldset(fieldset, base_fieldsetU, diff = 0.1):
     fieldset.add_constant('Cs', diff)
     return fieldset
 
-def set_coast_fieldset(fieldset, base_fieldsetU, gom_masks):
-    coast = gom_masks.coastal_id_mask.values
+def set_coast_fieldset(fieldset, base_fieldsetU, masks, indices = {}):
+    if indices:
+        masks = masks.isel(Latitude = indices['lat'], Longitude = indices['lon'])
+    coast = masks.coastal_id_mask
     fieldset.add_field(Field('coast', coast,
                             lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat,
                             mesh='spherical', allow_time_extrapolation =True, interp_method='nearest'))
@@ -180,7 +182,7 @@ def run_gom_mp(outfile, disp = True, stokes = False, diff = 0.0, indices = {}, t
     if diff > 0.0:
         fieldset = set_smagdiff_fieldset(fieldset, base_fieldsetU, diff)
         
-    fieldset = set_coast_fieldset(fieldset, base_fieldsetU, gom_masks)
+    fieldset = set_coast_fieldset(fieldset, base_fieldsetU, gom_masks, indices)
     
     # SET PARTICLESETS
     pset = get_particle_set(fieldset, testing, gom_masks)
@@ -218,7 +220,7 @@ def run_gom_mp_repeat_test(outfile, disp = True, stokes = False, diff = 0.0, ind
     if diff > 0.0:
         fieldset = set_smagdiff_fieldset(fieldset, base_fieldsetU, diff)
         
-    fieldset = set_coast_fieldset(fieldset, base_fieldsetU, gom_masks)
+    fieldset = set_coast_fieldset(fieldset, base_fieldsetU, gom_masks, indices)
     
     # SET PARTICLESETS
     pset = get_particle_set(fieldset, testing, gom_masks, empty = False)
