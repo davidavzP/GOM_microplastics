@@ -12,8 +12,7 @@ import math
 from gom_mp_kernels import *
 
 from parcels import ParcelsRandom
-from parcels import (FieldSet, Field, ParticleSet, JITParticle, AdvectionRK4, ErrorCode,
-                     DiffusionUniformKh, AdvectionDiffusionM1, AdvectionDiffusionEM, Variable ,GeographicPolar,Geographic)
+from parcels import (FieldSet, Field, ParticleSet, JITParticle, ErrorCode, Variable ,GeographicPolar,Geographic, VectorField)
 
 
 from glob import glob
@@ -58,47 +57,29 @@ def set_stokes_fieldset(fieldset):
     stokes_fieldset = get_stokes()
     stokes_fieldset.Ust.units = GeographicPolar()
     stokes_fieldset.Vst.units = Geographic()
-    fieldset=FieldSet(U=fieldset.U + stokes_fieldset.Ust,
-                        V=fieldset.V + stokes_fieldset.Vst)
-    return fieldset
-
-def set_displacement_field(fieldset, base_fieldsetU, masks, indices = {}):
-    if indices:
-        masks = masks.isel(Latitude = indices['lat'], Longitude = indices['lon'])
-        
-    # EXTRACT DATA
-    u_displacement = masks.disp_vx
-    v_displacement = masks.disp_vy
-    landmask = masks.landmask
-    d2s = masks.d2s
     
-    # ADD BOUNDRY PROPERTIES
-    fieldset.interp_method = {'U': 'freeslip', 'V': 'freeslip'}
+    fieldset.add_field(stokes_fieldset.Ust)
+    fieldset.add_field(stokes_fieldset.Vst)
     
-    # ADD DISPLACEMENT FIELD
-    fieldset.add_field(Field('dispU', data=u_displacement,
-                            lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat,
-                            mesh='spherical', allow_time_extrapolation = True))
-    fieldset.add_field(Field('dispV', data=v_displacement,
-                            lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat,
-                            mesh='spherical', allow_time_extrapolation = True))
-    fieldset.dispU.units = GeographicPolar()
-    fieldset.dispV.units = Geographic()
-
-    # ADD FIELD PROPERTIES
-    fieldset.add_field(Field('landmask', landmask,
-                            lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat,
-                            mesh='spherical', allow_time_extrapolation = True))
-    fieldset.add_field(Field('distance2shore', d2s,
-                            lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat, 
-                            mesh='spherical', allow_time_extrapolation = True))
+    vectorfield_stokes = VectorField('UVst', fieldset.Ust, fieldset.Vst)
+    fieldset.add_vector_field(vectorfield_stokes)
     
-    return fieldset
+def set_unbeach_field(fieldset):
+    file = 'data/gom_masks_w_inputs.nc'
+    variables = {'unBeachU': 'disp_vx',
+                 'unBeachV': 'disp_vy'}
+    dimensions = {'lat': 'Latitude', 'lon': 'Longitude'}
+    fieldsetUnBeach = FieldSet.from_netcdf(file, variables, dimensions, allow_time_extrapolation = True)
+    fieldset.add_field(fieldsetUnBeach.unBeachU)
+    fieldset.add_field(fieldsetUnBeach.unBeachV)
+    
+    UVunbeach = VectorField('UVunbeach', fieldset.unBeachU, fieldset.unBeachV)
+    fieldset.add_vector_field(UVunbeach)
+    
 
-def set_smagdiff_fieldset(fieldset, base_fieldsetU, diff = 0.1):
-    fieldset.add_field(Field(name='cell_areas', data=base_fieldsetU.cell_areas(), lon=base_fieldsetU.grid.lon, lat=base_fieldsetU.grid.lat))
+def set_smagdiff_fieldset(fieldset, diff = 0.1):
+    fieldset.add_field(Field(name='cell_areas', data=fieldset.U.cell_areas(), lon=fieldset.U.grid.lon, lat=fieldset.U.grid.lat))
     fieldset.add_constant('Cs', diff)
-    return fieldset
 
 
 def monte_carlo_multi_pr(vals, n, size = CELL_SIZE, seed = 1001):
@@ -120,6 +101,9 @@ def get_particle_set(fieldset):
         dV = Variable('dV')
         d2s = Variable('d2s', initial=1e3)
         age = Variable('age', initial=0.0)
+        # beached : 0 sea, 1 beached, 2 after non-beach dyn, 3 after beach dyn, 4 please unbeach
+        beached = Variable('beached', initial = 0.0)
+        unbeachCount = Variable('unbeachCount', dtype=np.int32, initial=0.0)
     
     # load nurdle dataset
     df_all_nurdles = pd.read_csv('data/nurdle_release.csv')
@@ -132,44 +116,34 @@ def get_particle_set(fieldset):
     return ParticleSet(fieldset = fieldset, pclass = Nurdle, lon = lons, lat = lats, time = time,)
 
 
-def run_gom_mp_backwards(outfile, disp = True, stokes = False, diff = 0.0, indices = {}, fw = -1):
-    gom_masks = xr.open_dataset('data/gom_masks_w_inputs.nc')
+def run_gom_mp_backwards(outfile, stokes = True, diff = 0.1, fw = -1):
+    #gom_masks = xr.open_dataset('data/gom_masks_w_inputs.nc')
     
     # SET FIELDSETS
-    fieldset = get_hycom_fieldset(indices)
-    base_fieldsetU = fieldset.U
+    fieldset = get_hycom_fieldset()
     
     if stokes:
-        fieldset = set_stokes_fieldset(fieldset)
-    if disp:
-        fieldset = set_displacement_field(fieldset, base_fieldsetU, gom_masks, indices)
+        set_stokes_fieldset(fieldset)
     if diff > 0.0:
-        fieldset = set_smagdiff_fieldset(fieldset, base_fieldsetU, diff)
+        set_smagdiff_fieldset(fieldset, 0.1)
+        
+    set_unbeach_field(fieldset)
             
     # SET PARTICLESETS
     pset = get_particle_set(fieldset)
     
-    kernels = pset.Kernel(AdvectionRK4)
-    if disp:
-        kernels = pset.Kernel(Displace) + kernels
-    if diff > 0.0:
-        kernels += pset.Kernel(SmagDiff)
-    if disp:
-        kernels += pset.Kernel(SetDisplacement)
+    kernels = pset.Kernel(AdvectionRK4) 
+    kernels += pset.Kernel(BeachTesting) + pset.Kernel(UnBeaching)
+    if stokes:
+        kernels += pset.Kernel(StokesUV) + pset.Kernel(BeachTesting)
+    if diff:
+        kernels += pset.Kernel(SmagDiff2) + pset.Kernel(BeachTesting)
+    kernels += pset.Kernel(Ageing2)    
     
     pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
-    pset.execute(kernels, runtime=timedelta(days=365), dt=fw*timedelta(hours=2), output_file=pfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticlePrint})
+    pset.execute(kernels, runtime=timedelta(days=60), dt=fw*timedelta(hours=2), output_file=pfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
     pfile.close()
+
     
     return fieldset, pset
-
-    # # RUN SIMULATION
-    # if testing > 0:
-    #     pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=3))
-    #     pset.execute(kernels, runtime=timedelta(hours=500), dt=timedelta(hours=1), output_file=pfile,  recovery={ErrorCode.ErrorOutOfBounds: DeleteParticlePrint})
-    #     pfile.close()
-    # else:
-    #     raise ValueError('Not Testing')
-
-    # return fieldset, pset
 
