@@ -151,6 +151,27 @@ def get_particle_set(fieldset, testing):
     
     return ParticleSet(fieldset = fieldset, pclass = Nurdle, lon = lons, lat = lats, time = time,)
 
+
+def run_gom_mp_backwards(outfile, stokes = False, disp = False, diff = 0.0, fw = -1, testing = False):
+    # SET FIELDSETS
+    fieldset = get_hycom_fieldset()
+    if stokes:
+        fieldset = set_stokes_fieldset(fieldset)
+    if disp:
+        fieldset = set_displacement_field(fieldset, fieldset.U)
+    if diff > 0.0:
+        fieldset = set_smagdiff_fieldset(fieldset, fieldset.U, diff)
+    pset = get_particle_set(fieldset, testing)
+    
+    kernels = (pset.Kernel(AdvectionRK4) + pset.Kernel(BeachTesting) + pset.Kernel(DisplaceB) + pset.Kernel(StokesUV) + pset.Kernel(BeachTesting) +
+               pset.Kernel(SmagDiffBeached) + pset.Kernel(Ageing) + pset.Kernel(BeachTesting))
+    
+    pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
+    if testing:
+        pset.execute(kernels, runtime=timedelta(days=60), dt=fw*timedelta(hours=2), output_file=pfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
+    pfile.close()
+    return fieldset, pset
+
 def run_gom_mp_backwards_testing_stokes(outfile, stokes = 0.0, disp = False, diff = 0.0, fw = -1, testing = False):
     #gom_masks = xr.open_dataset('data/gom_masks_w_inputs.nc')
     if testing:
@@ -190,68 +211,4 @@ def run_gom_mp_backwards_testing_stokes(outfile, stokes = 0.0, disp = False, dif
     
         
     return fieldset, pset
-            
-
-def run_gom_mp_backwards(outfile, stokes = False, disp = False, diff = 0.0, fw = -1, testing = False):
-    # SET FIELDSETS
-    fieldset = get_hycom_fieldset()
-    if stokes:
-        fieldset = set_stokes_fieldset(fieldset)
-    if disp:
-        fieldset = set_displacement_field(fieldset, fieldset.U)
-    if diff > 0.0:
-        fieldset = set_smagdiff_fieldset(fieldset, fieldset.U, diff)
-    pset = get_particle_set(fieldset, testing)
-    
-    kernels = (pset.Kernel(AdvectionRK4) + pset.Kernel(StokesUV) + pset.Kernel(BeachTesting) + pset.Kernel(DisplaceB) + 
-               pset.Kernel(SmagDiffBeached) + pset.Kernel(Ageing) +pset.Kernel(BeachTesting) + pset.Kernel(DisplaceB))
-               
-    # kernels = pset.Kernel(AdvectionRK4)
-    # if disp:
-    #     kernels = pset.Kernel(DisplaceB) + kernels
-    # if stokes:
-    #     kernels += pset.Kernel(StokesUV)
-    # if diff > 0.0:
-    #     kernels += pset.Kernel(SmagDiff)
-    # if disp:
-    #     kernels += pset.Kernel(SetDisplacement)
-    
-    
-    pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
-    if testing:
-        pset.execute(kernels, runtime=timedelta(days=30), dt=fw*timedelta(hours=2), output_file=pfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
-    pfile.close()
-    return fieldset, pset
-
-# def run_gom_mp_backwards(outfile, stokes = True, diff = 0.1, fw = -1, testing = False):
-#     #gom_masks = xr.open_dataset('data/gom_masks_w_inputs.nc')
-    
-#     # SET FIELDSETS
-#     fieldset = get_hycom_fieldset()
-    
-#     if stokes:
-#         set_stokes_fieldset(fieldset)
-#     if diff > 0.0:
-#         set_smagdiff_fieldset(fieldset, diff)
-        
-#     #set_unbeach_field(fieldset)
-#     set_displacement_field(fieldset)
-            
-#     # SET PARTICLESETS
-#     pset = get_particle_set(fieldset, testing)
-    
-#     kernels = pset.Kernel(SetDisplacementB) + pset.Kernel(DisplaceB) + pset.Kernel(AdvectionRK4) 
-#     if stokes:
-#         kernels += pset.Kernel(StokesUV) + pset.Kernel(BeachTesting)
-#     if diff:
-#         kernels += pset.Kernel(SmagDiff2) + pset.Kernel(BeachTesting)
-#     kernels += pset.Kernel(Ageing2)    
-    
-#     pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
-#     if testing:
-#         pset.execute(kernels, runtime=timedelta(days=30), dt=fw*timedelta(hours=2), output_file=pfile, recovery={ErrorCode.ErrorOutOfBounds: DeleteParticle})
-#     pfile.close()
-
-    
-#     return fieldset, pset
 
