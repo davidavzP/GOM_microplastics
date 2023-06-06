@@ -6,7 +6,7 @@ Kernels defining Particles in the Gulf of Mexico
 
 
 def AdvectionRK4(particle, fieldset, time):
-    if particle.beached == 0:
+    if particle.beached != 5:
         (u1, v1) = fieldset.UV[time, particle.depth, particle.lat, particle.lon]
         lon1, lat1 = (particle.lon + u1*.5*particle.dt, particle.lat + v1*.5*particle.dt)
 
@@ -19,17 +19,20 @@ def AdvectionRK4(particle, fieldset, time):
         (u4, v4) = fieldset.UV[time + particle.dt, particle.depth, lat3, lon3]
         particle.lon += (u1 + 2*u2 + 2*u3 + u4) / 6. * particle.dt
         particle.lat += (v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
-        #particle.beached = 2
+        particle.beached = 2
+    else:
+        particle.lon += 0
+        particle.lat += 0
 
 def StokesUV(particle, fieldset, time):
     if particle.beached == 0:
         (u_uss, v_uss) = fieldset.UVst[time, particle.depth, particle.lat, particle.lon]
         particle.lon += u_uss * particle.dt
         particle.lat += v_uss * particle.dt
-        #particle.beached = 3
+        particle.beached = 3
 
 def SmagDiffBeached(particle, fieldset, time):
-    if particle.beached == 0:
+    if particle.beached != 5:
         dx = 0.01
         # gradients are computed by using a local central difference.
         updx, vpdx = fieldset.UV[time, particle.depth, particle.lat, particle.lon+dx]
@@ -55,53 +58,47 @@ def SmagDiffBeached(particle, fieldset, time):
         particle.lon += dlon
         
         particle.beached = 3
+    else:
+        particle.lon += 0
+        particle.lat += 0
         
 def SetDisplacementB(particle, fieldset, time):
-    if particle.beached == 0:
-        particle.d2s = fieldset.distance2shore[time, particle.depth,
-                                particle.lat, particle.lon]
-        if  particle.d2s < 0.5:
-            dispUab = fieldset.dispU[time, particle.depth, particle.lat,
-                                particle.lon]
-            dispVab = fieldset.dispV[time, particle.depth, particle.lat,
-                                particle.lon]
-            particle.dU = dispUab
-            particle.dV = dispVab
-        else:
-            particle.dU = 0.
-            particle.dV = 0.
+    particle.d2s = fieldset.distance2shore[time, particle.depth,
+                            particle.lat, particle.lon]
+    if  particle.d2s < 0.5:
+        dispUab = fieldset.dispU[time, particle.depth, particle.lat,
+                            particle.lon]
+        dispVab = fieldset.dispV[time, particle.depth, particle.lat,
+                            particle.lon]
+        particle.dU = dispUab
+        particle.dV = dispVab
+    else:
+        particle.dU = 0.
+        particle.dV = 0.
 
-def c(particle, fieldset, time):    
-    if particle.d2s < 0.5 and particle.beached == 0:
+def DisplaceB(particle, fieldset, time):    
+    if particle.beached == 4:
+        dispUab = fieldset.dispU[time, particle.depth, particle.lat,
+                            particle.lon]
+        dispVab = fieldset.dispV[time, particle.depth, particle.lat,
+                            particle.lon]
         dtt = -1*particle.dt
-        particle.lon += particle.dU*dtt
-        particle.lat += particle.dV*dtt
-        
+        particle.lon += dispUab*dtt
+        particle.lat += dispVab*dtt
+        particle.beached = 0
+
 def BeachTesting(particle, fieldset, time):
     if particle.beached == 2 or particle.beached == 3:
         (u, v) = fieldset.UV[time, particle.depth, particle.lat, particle.lon]
         if fabs(u) < 1e-14 and fabs(v) < 1e-14:
-            particle.beached = 1
-            particle.d2s = fieldset.distance2shore[time, particle.depth,
-                                particle.lat, particle.lon]
-            if particle.d2s < 0.5:
-                dtt = 1*particle.dt
-                particle.lon += particle.dU*dtt
-                particle.lat += particle.dV*dtt   
+            if particle.beached == 2:
+                particle.beached = 4
+            else:
+                particle.beached = 1
         else:
-            particle.beached = 0     
-
-# THIS IS NOT WORKING...            
-def UnBeaching(particle, fieldset, time):
-    if particle.beached == 4:
-        print("Particle [%d] UnBeached !! (%g %g %g %g)" % (particle.id, particle.lon, particle.lat, particle.depth, particle.time))
-        dtt = -1*particle.dt
-        (ub, vb) = fieldset.UVunbeach[time, particle.depth, particle.lat, particle.lon]
-        particle.lon += ub * dtt
-        particle.lat += vb * dtt
-        particle.beached = 0.0
-        particle.unbeachCount += 1.0
+            particle.beached = 0
         
+
 def OutOfBounds(particle, fieldset, time):
     particle.lon = 0.0
     particle.lat = 0.0
@@ -109,35 +106,6 @@ def OutOfBounds(particle, fieldset, time):
     
 def Ageing2(particle, fieldset, time):
     particle.age += particle.dt
-
-
-def SmagDiff2(particle, fieldset, time):
-    if particle.beached == 0.0:
-        dx = 0.01
-        # gradients are computed by using a local central difference.
-        updx, vpdx = fieldset.UV[time, particle.depth, particle.lat, particle.lon+dx]
-        umdx, vmdx = fieldset.UV[time, particle.depth, particle.lat, particle.lon-dx]
-        updy, vpdy = fieldset.UV[time, particle.depth, particle.lat+dx, particle.lon]
-        umdy, vmdy = fieldset.UV[time, particle.depth, particle.lat-dx, particle.lon]
-
-        dudx = (updx - umdx) / (2*dx)
-        dudy = (updy - umdy) / (2*dx)
-
-        dvdx = (vpdx - vmdx) / (2*dx)
-        dvdy = (vpdy - vmdy) / (2*dx)
-
-        A = fieldset.cell_areas[time, 0, particle.lat, particle.lon]
-        sq_deg_to_sq_m = (1852*60)**2*math.cos(particle.lat*math.pi/180)
-        A = A / sq_deg_to_sq_m
-        Kh = fieldset.Cs * A * math.sqrt(dudx**2 + 0.5*(dudy + dvdx)**2 + dvdy**2)
-
-        dlat = ParcelsRandom.normalvariate(0., 1.) * math.sqrt(2*math.fabs(particle.dt)* Kh) 
-        dlon = ParcelsRandom.normalvariate(0., 1.) * math.sqrt(2*math.fabs(particle.dt)* Kh) 
-
-        particle.lat += dlat
-        particle.lon += dlon
-
-        particle.beached = 3.0
 
 # https://nbviewer.org/github/OceanParcels/parcels/blob/master/parcels/examples/tutorial_diffusion.ipynb        
 def SmagDiff(particle, fieldset, time):
@@ -201,4 +169,5 @@ def DeleteParticlePrint(particle, fieldset, time):
     particle.delete()
     
 def DeleteParticle(particle, fieldset, time):
+    particle.beached = 5
     particle.delete()

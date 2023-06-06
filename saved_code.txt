@@ -61,3 +61,17 @@ land:river ~ 1.8223987789248177, fishing:river ~ 1.103051539468531
 Example of mass scaling
 land_kg_mon_scaled: 92272.01433333337, mass of vp: 1.0974546422709766
 ###############################################################################################################
+if disp:
+    #     kernels = pset.Kernel(DisplaceB) + kernels
+# if disp:
+    #     kernels += pset.Kernel(SetDisplacementB)
+kernels = pset.Kernel(AdvectionRK4)
+    if disp:
+        kernels = pset.Kernel(Displace) + kernels
+    if stokes == 1.0:
+        kernels += pset.Kernel(StokesUV)
+    if diff > 0.0:
+        kernels += pset.Kernel(SmagDiffBeached)
+    if disp:
+        kernels += pset.Kernel(SetDisplacementB)
+

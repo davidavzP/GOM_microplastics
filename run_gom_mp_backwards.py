@@ -172,14 +172,15 @@ def run_gom_mp_backwards_testing_stokes(outfile, stokes = 0.0, disp = False, dif
     pset = get_particle_set(fieldset, testing)
 
     kernels = pset.Kernel(AdvectionRK4)
-    if disp:
-        kernels = pset.Kernel(Displace) + kernels
     if stokes == 1.0:
         kernels += pset.Kernel(StokesUV)
-    if diff > 0.0:
-        kernels += pset.Kernel(SmagDiff)
     if disp:
-        kernels += pset.Kernel(SetDisplacement)
+        kernels += pset.Kernel(BeachTesting)  + pset.Kernel(DisplaceB)
+    if diff > 0.0:
+        kernels += pset.Kernel(SmagDiffBeached) + pset.Kernel(BeachTesting)
+    if disp:
+        kernels += pset.Kernel(SetDisplacementB)
+    pset += pset.Kernel(Ageing)
 
 
     pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
@@ -202,15 +203,18 @@ def run_gom_mp_backwards(outfile, stokes = False, disp = False, diff = 0.0, fw =
         fieldset = set_smagdiff_fieldset(fieldset, fieldset.U, diff)
     pset = get_particle_set(fieldset, testing)
     
-    kernels = pset.Kernel(AdvectionRK4)
-    if disp:
-        kernels = pset.Kernel(DisplaceB) + kernels
-    if stokes:
-        kernels += pset.Kernel(StokesUV)
-    if diff > 0.0:
-        kernels += pset.Kernel(SmagDiff)
-    if disp:
-        kernels += pset.Kernel(SetDisplacement)
+    kernels = (pset.Kernel(AdvectionRK4) + pset.Kernel(StokesUV) + pset.Kernel(BeachTesting) + pset.Kernel(DisplaceB) + 
+               pset.Kernel(SmagDiffBeached) + pset.Kernel(Ageing) +pset.Kernel(BeachTesting) + pset.Kernel(DisplaceB))
+               
+    # kernels = pset.Kernel(AdvectionRK4)
+    # if disp:
+    #     kernels = pset.Kernel(DisplaceB) + kernels
+    # if stokes:
+    #     kernels += pset.Kernel(StokesUV)
+    # if diff > 0.0:
+    #     kernels += pset.Kernel(SmagDiff)
+    # if disp:
+    #     kernels += pset.Kernel(SetDisplacement)
     
     
     pfile = pset.ParticleFile(name=outfile, outputdt=timedelta(hours=24))
