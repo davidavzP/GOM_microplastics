@@ -19,14 +19,14 @@ def AdvectionRK4(particle, fieldset, time):
         (u4, v4) = fieldset.UV[time + particle.dt, particle.depth, lat3, lon3]
         particle.lon += (u1 + 2*u2 + 2*u3 + u4) / 6. * particle.dt
         particle.lat += (v1 + 2*v2 + 2*v3 + v4) / 6. * particle.dt
-        particle.beached = 2
+        #particle.beached = 2
 
 def StokesUV(particle, fieldset, time):
     if particle.beached == 0:
         (u_uss, v_uss) = fieldset.UVst[time, particle.depth, particle.lat, particle.lon]
         particle.lon += u_uss * particle.dt
         particle.lat += v_uss * particle.dt
-        particle.beached = 3
+        #particle.beached = 3
 
 def SmagDiffBeached(particle, fieldset, time):
     if particle.beached == 0:
@@ -56,17 +56,42 @@ def SmagDiffBeached(particle, fieldset, time):
         
         particle.beached = 3
         
+def SetDisplacementB(particle, fieldset, time):
+    if particle.beached == 0:
+        particle.d2s = fieldset.distance2shore[time, particle.depth,
+                                particle.lat, particle.lon]
+        if  particle.d2s < 0.5:
+            dispUab = fieldset.dispU[time, particle.depth, particle.lat,
+                                particle.lon]
+            dispVab = fieldset.dispV[time, particle.depth, particle.lat,
+                                particle.lon]
+            particle.dU = dispUab
+            particle.dV = dispVab
+        else:
+            particle.dU = 0.
+            particle.dV = 0.
+
+def c(particle, fieldset, time):    
+    if particle.d2s < 0.5 and particle.beached == 0:
+        dtt = -1*particle.dt
+        particle.lon += particle.dU*dtt
+        particle.lat += particle.dV*dtt
+        
 def BeachTesting(particle, fieldset, time):
     if particle.beached == 2 or particle.beached == 3:
         (u, v) = fieldset.UV[time, particle.depth, particle.lat, particle.lon]
         if fabs(u) < 1e-14 and fabs(v) < 1e-14:
-            if particle.beached == 2:
-                particle.beached = 4
-            else:
-                particle.beached = 1
+            particle.beached = 1
+            particle.d2s = fieldset.distance2shore[time, particle.depth,
+                                particle.lat, particle.lon]
+            if particle.d2s < 0.5:
+                dtt = 1*particle.dt
+                particle.lon += particle.dU*dtt
+                particle.lat += particle.dV*dtt   
         else:
             particle.beached = 0     
-            
+
+# THIS IS NOT WORKING...            
 def UnBeaching(particle, fieldset, time):
     if particle.beached == 4:
         print("Particle [%d] UnBeached !! (%g %g %g %g)" % (particle.id, particle.lon, particle.lat, particle.depth, particle.time))
